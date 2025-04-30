@@ -253,7 +253,7 @@ class BaseTransform(BaseModule):
         camera_intrinsics = np.asarray(camera_intrinsics)
         camera_intrinsics = images.new_tensor(camera_intrinsics)  # (B, N, 4, 4)
         img_aug_matrix = np.asarray(img_aug_matrix)
-        img_aug_matrix = images.new_tensor(img_aug_matrix)  # (B, N, 4, 4)
+        img_aug_matrix = images.new_tensor(img_aug_matrix)  # (B, N, 4, 4), value=I(0.5,0.5,1,1)
         lidar2ego = np.asarray(lidar2ego)
         lidar2ego = images.new_tensor(lidar2ego)  # (B, N, 4, 4)
 
@@ -266,9 +266,9 @@ class BaseTransform(BaseModule):
 
         rots = camera2ego[..., :3, :3]
         trans = camera2ego[..., :3, 3]
-        intrins = camera_intrinsics[..., :3, :3]
-        post_rots = img_aug_matrix[..., :3, :3]
-        post_trans = img_aug_matrix[..., :3, 3]
+        intrins = camera_intrinsics[..., :3, :3] #shape=[1,6,3,3]
+        post_rots = img_aug_matrix[..., :3, :3] # shape=[1,6,3,3], I(0.5,0.5,1)
+        post_trans = img_aug_matrix[..., :3, 3] #全零 shape=[1,6,3]
         lidar2ego_rots = lidar2ego[..., :3, :3]
         lidar2ego_trans = lidar2ego[..., :3, 3]
 
@@ -279,9 +279,9 @@ class BaseTransform(BaseModule):
         #     img_metas,
         # )
 
-        geom = self.get_geometry_v1(
-            fH,
-            fW,
+        geom = self.get_geometry_v1( #shape=[1,6,68,15,25,3]
+            fH, # 15
+            fW, # 25
             rots,
             trans,
             intrins,
@@ -291,11 +291,11 @@ class BaseTransform(BaseModule):
             lidar2ego_trans,
             img_metas
         )
-        mlp_input = self.get_mlp_input(camera2ego, camera_intrinsics, post_rots, post_trans)
-        x, depth = self.get_cam_feats(images, mlp_input)
-        x = self.bev_pool(geom, x)
+        mlp_input = self.get_mlp_input(camera2ego, camera_intrinsics, post_rots, post_trans) #shape=[1,6,22]
+        x, depth = self.get_cam_feats(images, mlp_input) #shape=[1,6,68,15,25,256]
+        x = self.bev_pool(geom, x) #shape=[1,256,200,400]
         # import pdb;pdb.set_trace()
-        x = x.permute(0,1,3,2).contiguous()
+        x = x.permute(0,1,3,2).contiguous() #shape=[1,256,400,200]
         
         return x, depth
 
@@ -1107,11 +1107,11 @@ class LSSTransform(BaseTransform):
         return x, depth
 
     def forward(self, images, img_metas):
-        x, depth = super().forward(images, img_metas)
-        x = self.downsample(x)
+        x, depth = super().forward(images, img_metas) # shape=[1,256,400,200]
+        x = self.downsample(x) # shape=[1,256,200,100]
         ret_dict = dict(
             bev=x,
-            depth=depth,
+            depth=depth, # shape=[1,6,68,15,25]
         )
         return ret_dict
 

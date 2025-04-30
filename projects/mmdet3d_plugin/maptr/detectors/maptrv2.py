@@ -90,13 +90,13 @@ class MapTRv2(MVXTwoStageDetector):
             if self.use_grid_mask:
                 img = self.grid_mask(img)
 
-            img_feats = self.img_backbone(img)
+            img_feats = self.img_backbone(img) #img_feats[0].shape=[6,2048,15,25]
             if isinstance(img_feats, dict):
                 img_feats = list(img_feats.values())
         else:
             return None
         if self.with_img_neck:
-            img_feats = self.img_neck(img_feats)
+            img_feats = self.img_neck(img_feats) #img_feats[0].shape=[6,256,15,25]
 
         img_feats_reshaped = []
         for img_feat in img_feats:
@@ -105,7 +105,7 @@ class MapTRv2(MVXTwoStageDetector):
                 img_feats_reshaped.append(img_feat.view(int(B/len_queue), len_queue, int(BN / B), C, H, W))
             else:
                 img_feats_reshaped.append(img_feat.view(B, int(BN / B), C, H, W))
-        return img_feats_reshaped
+        return img_feats_reshaped #img_feats_reshaped[0].shape=[1,6,256,15,25]
 
     @auto_fp16(apply_to=('img'), out_fp32=True)
     def extract_feat(self, img, img_metas=None, len_queue=None):
@@ -113,7 +113,7 @@ class MapTRv2(MVXTwoStageDetector):
 
         img_feats = self.extract_img_feat(img, img_metas, len_queue=len_queue)
         
-        return img_feats
+        return img_feats #img_feats[0].shape=[1,6,256,15,25]
 
 
     def forward_pts_train(self,
@@ -324,7 +324,7 @@ class MapTRv2(MVXTwoStageDetector):
             if not isinstance(var, list):
                 raise TypeError('{} must be a list, but got {}'.format(
                     name, type(var)))
-        img = [img] if img is None else img
+        img = [img] if img is None else img # [1,6,3,480,800]
         points = [points] if points is None else points
         if img_metas[0][0]['scene_token'] != self.prev_frame_info['scene_token']:
             # the first sample of each scene is truncated
@@ -385,6 +385,9 @@ class MapTRv2(MVXTwoStageDetector):
     def simple_test_pts(self, x, lidar_feat, img_metas, prev_bev=None, rescale=False):
         """Test function"""
         outs = self.pts_bbox_head(x, lidar_feat, img_metas, prev_bev=prev_bev)
+        # \dense_heads\maptrv2_head.py  outs['bev_embed'].shape=[20000,1,256]
+        # 这一步通过LSSTransform得到了bev特征，用到了相机内参、相机与自车的坐标转换等。
+        #我们只用改到这一步即可，其实通过前面的步骤获得一样的img_metas即可
 
         bbox_list = self.pts_bbox_head.get_bboxes(
             outs, img_metas, rescale=rescale)
@@ -392,6 +395,7 @@ class MapTRv2(MVXTwoStageDetector):
         bbox_results = [
             self.pred2result(bboxes, scores, labels, pts)
             for bboxes, scores, labels, pts in bbox_list
+            #[50,4],[50][50][50,20,2] 
         ]
         # import pdb;pdb.set_trace()
         return outs['bev_embed'], bbox_results
@@ -400,7 +404,7 @@ class MapTRv2(MVXTwoStageDetector):
         lidar_feat = None
         if self.modality =='fusion':
             lidar_feat = self.extract_lidar_feat(points)
-        img_feats = self.extract_feat(img=img, img_metas=img_metas)
+        img_feats = self.extract_feat(img=img, img_metas=img_metas) #img_feats[0].shape=[1,6,256,15,25]
 
         bbox_list = [dict() for i in range(len(img_metas))]
         new_prev_bev, bbox_pts = self.simple_test_pts(

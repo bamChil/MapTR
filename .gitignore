@@ -1,6 +1,7 @@
 /*.sh
 change_submit.py
 cluster_submit.yaml
+.vscode
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

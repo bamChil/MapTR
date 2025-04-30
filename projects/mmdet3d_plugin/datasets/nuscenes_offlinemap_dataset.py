@@ -1378,10 +1378,15 @@ class CustomNuScenesOfflineLocalMapDataset(CustomNuScenesDataset):
             dict: Testing data dict of the corresponding index.
         """
         input_dict = self.get_data_info(index)
-        self.pre_pipeline(input_dict)
-        example = self.pipeline(input_dict)
+        self.pre_pipeline(input_dict) #这步啥也没干，就是在input_dict里面加了点空列表
+        #这里面有用的：'camera2ego':len6的4*4array列表;'cam_intrinsic';'img_filename'等
+        example = self.pipeline(input_dict) 
+        #example:{'img_metas':[],'img':[]}  value都是DataContainer类构成的列表
+        #img.shape=[6,3,480,800], 原本是900*1600，缩放为原来的1/2后，再将450填充至能整除32的480
+        #相当于是self.pipeline将input_dict中的img_filename载出了图片，其它信息保存为'img_metas'
         if self.is_vis_on_test:
             example = self.vectormap_pipeline(example, input_dict)
+            #这步给example字典多了两个键值对:{'gt_labels_3d':xxx,'gt_bboxes_3d'}
         return example
 
     def __getitem__(self, idx):

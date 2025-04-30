@@ -226,12 +226,12 @@ class MapTRPerceptionTransformer(BaseModule):
         # assert len(mlvl_feats) == 1, 'Currently we only use last single level feat in LSS'
         # import ipdb;ipdb.set_trace()
         images = mlvl_feats[self.feat_down_sample_indice]
-        img_metas = kwargs['img_metas']
+        img_metas = kwargs['img_metas'] # 相机参数等在这里
         encoder_outputdict = self.encoder(images,img_metas)
-        bev_embed = encoder_outputdict['bev']
-        depth = encoder_outputdict['depth']
+        bev_embed = encoder_outputdict['bev'] #shape=[1,256,200,100]
+        depth = encoder_outputdict['depth'] #shape=[1,6,68,15,25]
         bs, c, _,_ = bev_embed.shape
-        bev_embed = bev_embed.view(bs,c,-1).permute(0,2,1).contiguous()
+        bev_embed = bev_embed.view(bs,c,-1).permute(0,2,1).contiguous() #shape=[1,20000,256]
         ret_dict = dict(
             bev=bev_embed,
             depth=depth
@@ -264,13 +264,13 @@ class MapTRPerceptionTransformer(BaseModule):
                 **kwargs)
             bev_embed = ret_dict['bev']
             depth = ret_dict['depth']
-        else:
+        else: # into this one
             ret_dict = self.lss_bev_encode(
                 mlvl_feats,
                 prev_bev=prev_bev,
                 **kwargs)
-            bev_embed = ret_dict['bev']
-            depth = ret_dict['depth']
+            bev_embed = ret_dict['bev'] # shape=[1,20000,256]
+            depth = ret_dict['depth'] # shape[1,5,58,15,25]
         if lidar_feat is not None:
             bs = mlvl_feats[0].size(0)
             bev_embed = bev_embed.view(bs, bev_h, bev_w, -1).permute(0,3,1,2).contiguous()
@@ -372,8 +372,8 @@ class MapTRPerceptionTransformer(BaseModule):
             bev_pos=bev_pos,
             prev_bev=prev_bev,
             **kwargs)  # bev_embed shape: bs, bev_h*bev_w, embed_dims
-        bev_embed = ouput_dic['bev']
-        depth = ouput_dic['depth']
+        bev_embed = ouput_dic['bev'] # shape=[1,20000,256]
+        depth = ouput_dic['depth'] # shape[1,6,68,15,25]
         bs = mlvl_feats[0].size(0)
         query_pos, query = torch.split(
             object_query_embed, self.embed_dims, dim=1)

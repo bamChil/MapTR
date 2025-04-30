@@ -92,12 +92,13 @@ def parse_args():
 def main():
     args = parse_args()
     cfg = Config.fromfile(args.config)
+    # cfg.xxx 返回 cfg._cfg_dict 中的内容
 
     # import modules from plguin/xx, registry will be updated
     if hasattr(cfg, 'plugin'):
         if cfg.plugin:
             import importlib
-            if hasattr(cfg, 'plugin_dir'):
+            if hasattr(cfg, 'plugin_dir'):  # 会进入这个循环
                 plugin_dir = cfg.plugin_dir
                 _module_dir = os.path.dirname(plugin_dir)
                 _module_dir = _module_dir.split('/')
@@ -169,6 +170,10 @@ def main():
     cfg.model.train_cfg = None
     # cfg.model.pts_bbox_head.bbox_coder.max_num=15 # TODO this is a hack
     model = build_model(cfg.model, test_cfg=cfg.get('test_cfg'))
+    # 这个会跳到/MapTR/projects/mmdet3d_plugin/maptr/detectors/maptrv2.py
+
+    print(cfg.get('test_cfg')) # None
+
     fp16_cfg = cfg.get('fp16', None)
     if fp16_cfg is not None:
         wrap_fp16_model(model)
@@ -185,7 +190,7 @@ def main():
         # segmentation dataset has `PALETTE` attribute
         model.PALETTE = dataset.PALETTE
     logger.info('DONE load check point')
-    model = MMDataParallel(model, device_ids=[0])
+    model = MMDataParallel(model, device_ids=[7])
     model.eval()
 
     img_norm_cfg = cfg.img_norm_cfg
@@ -197,9 +202,11 @@ def main():
 
     # get pc_range
     pc_range = cfg.point_cloud_range
+    #pc_range=[-15,-30,-10,15,30,10],实际上-10与10并没有用上
 
     # get car icon
     car_img = Image.open('./figs/lidar_car.png')
+    #这个是地图中间的红色小车
 
     # get color map: divider->r, ped->b, boundary->g
     colors_plt = ['orange', 'b', 'r', 'g']
@@ -214,7 +221,7 @@ def main():
     # prog_bar = mmcv.ProgressBar(len(CANDIDATE))
     prog_bar = mmcv.ProgressBar(len(dataset))
     # import pdb;pdb.set_trace()
-    for i, data in enumerate(data_loader):
+    for i, data in enumerate(data_loader):   #后面的全在这个for循环里面
         if ~(data['gt_labels_3d'].data[0][0] != -1).any():
             # import pdb;pdb.set_trace()
             logger.error(f'\n empty gt for index {i}, continue')
@@ -236,6 +243,7 @@ def main():
 
         with torch.no_grad():
             result = model(return_loss=False, rescale=True, **data)
+            # 这里得到了推理结果
         sample_dir = osp.join(args.show_dir, pts_filename)
         mmcv.mkdir_or_exist(osp.abspath(sample_dir))
 
@@ -271,7 +279,7 @@ def main():
         cams_img_path = osp.join(sample_dir,'surroud_view.jpg')
         cv2.imwrite(cams_img_path, cams_img,[cv2.IMWRITE_JPEG_QUALITY, 70])
         
-        for vis_format in args.gt_format:
+        for vis_format in args.gt_format: #args.gt_format=['']
             if vis_format == 'se_pts':
                 gt_line_points = gt_bboxes_3d[0].start_end_points
                 for gt_bbox_3d, gt_label_3d in zip(gt_line_points, gt_labels_3d[0]):
@@ -290,7 +298,7 @@ def main():
                     plt.gca().add_patch(Rectangle(xy,width,height,linewidth=0.4,edgecolor=colors_plt[gt_label_3d],facecolor='none'))
                     # plt.Rectangle(xy, width, height,color=colors_plt[gt_label_3d])
                 # continue
-            elif vis_format == 'fixed_num_pts':
+            elif vis_format == 'fixed_num_pts':   #跳到这个if分支中，这是用来画gt的：GT_fixednum_pts_MAP.png
                 plt.figure(figsize=(2, 4))
                 plt.xlim(pc_range[0], pc_range[3])
                 plt.ylim(pc_range[1], pc_range[4])
@@ -351,34 +359,37 @@ def main():
         # visualize pred
         # import pdb;pdb.set_trace()
         result_dic = result[0]['pts_bbox']
-        boxes_3d = result_dic['boxes_3d'] # bbox: xmin, ymin, xmax, ymax
-        scores_3d = result_dic['scores_3d']
-        labels_3d = result_dic['labels_3d']
-        pts_3d = result_dic['pts_3d']
-        keep = scores_3d > args.score_thresh
+        boxes_3d = result_dic['boxes_3d'] # bbox: xmin, ymin, xmax, ymax, shape=[50,4]
+        scores_3d = result_dic['scores_3d'] # shape=[50]
+        labels_3d = result_dic['labels_3d'] # shape=[50]
+        pts_3d = result_dic['pts_3d'] # shape=[50,30,2]
+        keep = scores_3d > args.score_thresh 
 
         plt.figure(figsize=(2, 4))
         plt.xlim(pc_range[0], pc_range[3])
         plt.ylim(pc_range[1], pc_range[4])
         plt.axis('off')
         for pred_score_3d, pred_bbox_3d, pred_label_3d, pred_pts_3d in zip(scores_3d[keep], boxes_3d[keep],labels_3d[keep], pts_3d[keep]):
-
+            # []               [4]            []            [20,2]
             pred_pts_3d = pred_pts_3d.numpy()
             pts_x = pred_pts_3d[:,0]
             pts_y = pred_pts_3d[:,1]
             plt.plot(pts_x, pts_y, color=colors_plt[pred_label_3d],linewidth=1,alpha=0.8,zorder=-1)
             plt.scatter(pts_x, pts_y, color=colors_plt[pred_label_3d],s=1,alpha=0.8,zorder=-1)
 
-
+            # 这里的bbox根本就没用上？
             pred_bbox_3d = pred_bbox_3d.numpy()
             xy = (pred_bbox_3d[0],pred_bbox_3d[1])
             width = pred_bbox_3d[2] - pred_bbox_3d[0]
             height = pred_bbox_3d[3] - pred_bbox_3d[1]
+
+
             pred_score_3d = float(pred_score_3d)
             pred_score_3d = round(pred_score_3d, 2)
             s = str(pred_score_3d)
 
         plt.imshow(car_img, extent=[-1.2, 1.2, -1.5, 1.5])
+        # 显示中间的红色小车
 
         map_path = osp.join(sample_dir, 'PRED_MAP_plot.png')
         plt.savefig(map_path, bbox_inches='tight', format='png',dpi=1200)

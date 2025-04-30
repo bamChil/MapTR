@@ -299,15 +299,15 @@ class MapTRv2Head(DETRHead):
             # import ipdb;ipdb.set_trace()
 
 
-        bs, num_cam, _, _, _ = mlvl_feats[0].shape
+        bs, num_cam, _, _, _ = mlvl_feats[0].shape # [1,6,256,15,25]
         dtype = mlvl_feats[0].dtype
         # import ipdb;ipdb.set_trace()
         if self.query_embed_type == 'all_pts':
             object_query_embeds = self.query_embedding.weight.to(dtype)
-        elif self.query_embed_type == 'instance_pts':
-            pts_embeds = self.pts_embedding.weight.unsqueeze(0)
-            instance_embeds = self.instance_embedding.weight[0:num_vec].unsqueeze(1)
-            object_query_embeds = (pts_embeds + instance_embeds).flatten(0, 1).to(dtype)
+        elif self.query_embed_type == 'instance_pts': # into this one
+            pts_embeds = self.pts_embedding.weight.unsqueeze(0) # shape=[1,20,512]
+            instance_embeds = self.instance_embedding.weight[0:num_vec].unsqueeze(1) #shape=[50,1,512]
+            object_query_embeds = (pts_embeds + instance_embeds).flatten(0, 1).to(dtype)#shape=[1000,512]
         if self.bev_embedding is not None:
             bev_queries = self.bev_embedding.weight.to(dtype)
 
@@ -341,8 +341,8 @@ class MapTRv2Head(DETRHead):
                 img_metas=img_metas,
                 prev_bev=prev_bev,
             )['bev']
-        else:
-            outputs = self.transformer(
+        else: # into this one, here, we will use bev method -> pv2bev features
+            outputs = self.transformer( #plugin/maptr/modules/transformer.py/MapTRPerceptionTransformer
                 mlvl_feats,
                 lidar_feat,
                 bev_queries,
@@ -361,8 +361,9 @@ class MapTRv2Head(DETRHead):
                 num_pts_per_vec=self.num_pts_per_vec,
         )
 
+        #[20000,1,256],[1,6,68,15,25],...,[1,1000,2],[6,1,1000,2]
         bev_embed,depth, hs, init_reference, inter_references = outputs
-        hs = hs.permute(0, 2, 1, 3)
+        hs = hs.permute(0, 2, 1, 3) # [6,1,1000,256]
         outputs_classes_one2one = []
         outputs_coords_one2one = []
         outputs_pts_coords_one2one = []
